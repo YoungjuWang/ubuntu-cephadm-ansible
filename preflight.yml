@@ -1,0 +1,138 @@
+---
+- name: Install
+  hosts: all
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: Disable unattended upgrades
+      lineinfile:
+        path: /etc/apt/apt.conf.d/20auto-upgrades
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+      loop:
+        - {regexp: 'APT::Periodic::Update-Package-Lists "1";', line: 'APT::Periodic::Update-Package-Lists "0";'}
+        - {regexp: 'APT::Periodic::Unattended-Upgrade "1";', line: 'APT::Periodic::Unattended-Upgrade "0";'}
+
+    - name: Upgrade 'ca-certificates' packages to use container engine repo key files.
+      apt:
+        name: ca-certificates
+        state: latest
+        update_cache: yes
+      register: result
+      until: result is succeeded
+
+    - name: Install podman
+      when: container_engine == "podman"
+      block:
+        - name: configure podman repo key
+          apt_key:
+            url: "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_{{ ansible_facts['distribution_version'] }}/Release.key"
+            state: present
+        
+        - name: setup podman repository
+          apt_repository:
+            repo: "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_{{ ansible_facts['distribution_version'] }}/ /"
+            state: present 
+            filename: devel:kubic:libcontainers:stable.list
+            update_cache: no
+
+        - name: install podman
+          apt:
+            name: "{{ item }}"
+            state: present
+            update_cache: yes
+          register: result
+          until: result is succeeded
+          loop:
+            - python3
+            - podman
+
+    - name: Install docker
+      when: container_engine == "docker"
+      block:
+        - name: uninstall old version packages
+          apt:
+            name: "{{ item }}"
+            state: absent
+          loop:
+            - docker 
+            - docker-engine
+            - docker.io
+            - containerd
+            - runc
+
+        - name: configure docker repository key
+          apt_key:
+            url: "https://download.docker.com/linux/ubuntu/gpg"
+            state: present
+
+        - name: setup docker repository
+          apt_repository:
+            repo: "deb https://download.docker.com/linux/ubuntu {{ ansible_facts['distribution_release'] }} stable"
+            state: present 
+            filename: docker
+            update_cache: no
+
+        - name: install docker
+          apt:
+            name: "{{ item }}"
+            state: present
+            update_cache: yes
+          register: result
+          until: result is succeeded
+          loop:
+            - docker-ce
+            - docker-ce-cli
+            - containerd.io
+
+    - name: Install ceph packages
+      block: 
+        - name: configure ceph community repository stable key
+          apt_key:
+            url: "https://download.ceph.com/keys/release.asc"
+            state: present
+        
+        - name: configure Ceph community repository
+          when: ceph_origin == 'community'
+          apt_repository:
+            repo: "deb https://download.ceph.com/debian-{{ ceph_release }}/ {{ ansible_facts['distribution_release'] }} main"
+            state: present 
+            filename: ceph
+            update_cache: no
+
+        - name: configure Ceph testing repository 
+          when: ceph_origin == 'testing'
+          apt_repository:
+            repo: "deb https://download.ceph.com/debian-testing/ {{ ansible_facts['distribution_release'] }} main"
+            state: present 
+            filename: ceph
+            update_cache: no
+
+        - name: install ceph packages
+          apt:
+            name: "{{ item }}"
+            state: present
+            update_cache: yes
+          register: result
+          until: result is succeeded
+          loop:
+            - cephadm
+            - ceph-common
+
+    - name: Configure NTP
+      block:
+        - name: Set timezone
+          timezone:
+            name: "{{ timezone }}"
+
+        - name: Set timesyncd.conf
+          lineinfile:
+            path: /etc/systemd/timesyncd.conf
+            insertafter: '^\[Time\]'
+            line: "NTP={{ ntp_server }}"
+
+        - name: Restart timesyncd
+          systemd:
+            name: systemd-timesyncd
+            state: restarted
+            daemon_reload: yes

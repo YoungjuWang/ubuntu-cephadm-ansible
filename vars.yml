@@ -1,0 +1,5 @@
+container_engine: "podman"
+ceph_origin: 'community'
+ceph_release: 'pacific'
+timezone: 'Asia/Seoul'
+ntp_server: '0.kr.pool.ntp.org'
