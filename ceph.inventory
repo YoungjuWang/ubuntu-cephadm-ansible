@@ -2,5 +2,5 @@ bootstrap ansible_connection=local
 mon2 ansible_host="10.62.62.51"
 mon3 ansible_host="10.62.62.52"
 
-[vars:all]
+[all:vars]
 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
