@@ -4,6 +4,12 @@
   vars_files:
     - vars.yml
   tasks:
+    - name: Configure /etc/hosts file
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ hostvars[item]['ansible_facts']['default_ipv4']['address'] }} {{ hostvars[item]['ansible_facts']['hostname'] }}"
+      loop: "{{ ansible_play_hosts }}"
+      
     - name: Disable unattended upgrades
       lineinfile:
         path: /etc/apt/apt.conf.d/20auto-upgrades
